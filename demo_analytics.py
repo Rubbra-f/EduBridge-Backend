@@ -272,7 +272,7 @@ def build_router(get_service: Callable, require_api_key: Callable) -> APIRouter:
             "Gunakan heading: Ringkasan kelas, Temuan utama, Konsep prioritas, Rekomendasi tindakan, Keterbatasan dan catatan. "
             "Jangan menambah angka, konsep, atau klaim yang tidak ada di fakta. Sebut mastery sebagai estimasi model, "
             "bukan fakta terverifikasi. Jika rekomendasi placeholder, wajib tulis perlu validasi guru. "
-            "Insufficient evidence bukan learning gap. Data ini sintetis untuk demo, jangan menyajikannya sebagai data nyata.\\n\\n"
+            "Insufficient evidence bukan learning gap. Data ini sintetis untuk demo, jangan menyajikannya sebagai data nyata.\n\n"
             + json.dumps(facts, ensure_ascii=False)
         )
         model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
