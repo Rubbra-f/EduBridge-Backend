@@ -48,7 +48,7 @@ Open the dashboard and sign in with `DASHBOARD_PASSWORD`. The dashboard calls Fa
 - **Assessment Submit:** enter A/B/C/D choices and submit them for server-side scoring and P-DINA diagnosis.
 - **Direct Diagnosis:** send correct/incorrect/omitted responses to the diagnosis endpoint.
 - **Narrative:** request a student- or teacher-oriented explanation from the narrative endpoint.
-- **Model Management:** manually reload the model checkpoint.
+- **Model Management:** inspect all registered checkpoints, choose a persistent default model, and reload one or all model services.
 
 The dashboard only exposes capabilities that currently exist in the FastAPI API. Adaptive next-question selection, class-wide learning-gap analysis, intervention-plan management, and pre-test/post-test comparison are not yet implemented as backend endpoints.
 
@@ -68,12 +68,16 @@ The fixed assessment currently operates in metadata-only mode unless a separatel
 ## API
 
 - `GET /health` — public health/model-artifact readiness check
-- `GET /api/v1/model` — model information
+- `GET /api/v1/models` — list registered models and checkpoint readiness
+- `GET /api/v1/models/active` — inspect the configured default model
+- `PUT /api/v1/admin/models/default` — set the persistent default model (admin/API key)
+- `GET /api/v1/model` — model information for the default model (or `?model_id=...`)
 - `GET /api/v1/assessment/bank` — supported assessment metadata
 - `GET /api/v1/assessment/fixed` — fixed-form metadata and optional authorized question content
 - `GET /api/v1/assessment/images/{question_id}` — optional image asset
 - `POST /api/v1/assessment/submit` — scores A-D choices server-side and runs diagnosis
-- `POST /api/v1/diagnose` — runs diagnosis from binary response values
+- `POST /api/v1/diagnose` — runs diagnosis from binary response values; optional body `model_id` selects a model for that request
+- `POST /api/v1/admin/reload?model_id=eedi_pdina` — reload one model; omit the query to reload all registered models
 - `POST /api/v1/narrative` — generates an explanation
 - `POST /api/v1/admin/reload` — reloads model artifacts
 
@@ -132,3 +136,28 @@ P-DINA fixed assessment form. This is separate from local EduBridge image assets
 matching numeric image filenames do not prove item equivalence, answer-key validity,
 or concept mapping. Demo data is for software testing only, not evidence of
 intervention effectiveness.
+
+## Multiple model checkpoints
+
+The API includes a model registry with two initial entries:
+
+- `eedi_pdina`: default model, loaded from `/app/artifacts`.
+- `calculus_pdina`: optional demo model, loaded from `/app/artifacts_calculus`; its documented dataset is synthetic and must not be used as validated student evidence.
+
+The calculus checkpoint is **not bundled in this backend repository**. To make it available, place the complete `artifacts_calculus/` folder beside `compose.yaml` on the host, including its `model/` and (where used) `assessment/` subfolders. Compose mounts that folder read-only. The dashboard lists unavailable models but prevents selecting a model until all required checkpoint files are present.
+
+The default model is persisted in the SQLite database configured by `EDUBRIDGE_DB_PATH`, so it survives container restarts. Set `EDUBRIDGE_DEFAULT_MODEL=eedi_pdina` for the initial default. The administrator can change it in Streamlit **Model Management**.
+
+For a one-off model choice, send `model_id` in a diagnosis or assessment request body:
+
+```json
+{
+  "model_id": "eedi_pdina",
+  "student_id": "S001",
+  "responses": [
+    {"QuestionId": 123, "response": 1}
+  ]
+}
+```
+
+If `model_id` is omitted, the API uses the saved default. The model identifier is returned in diagnosis metadata. Each model has its own item IDs and answer-key artifacts; never send question IDs from one model to another.
