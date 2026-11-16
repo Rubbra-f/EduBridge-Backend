@@ -12,7 +12,7 @@ services:
       EEDI_IMAGE_DIR: /app/content/images
     ports:
       # Keep the API private behind a reverse proxy (Caddy/Nginx).
-      - "127.0.0.1:\${EDUBRIDGE_PORT:-8000}:8000"
+      - "127.0.0.1:${EDUBRIDGE_PORT:-8000}:8000"
     volumes:
       # Mount authorized assessment content and image assets here when available.
       - ./content:/app/content:ro
@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     ports:
       # Keep the admin/testing UI private behind a reverse proxy.
-      - "127.0.0.1:\${DASHBOARD_PORT:-8501}:8501"
+      - "127.0.0.1:${DASHBOARD_PORT:-8501}:8501"
     healthcheck:
       test:
         - CMD
