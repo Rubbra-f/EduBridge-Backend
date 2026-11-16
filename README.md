@@ -104,7 +104,8 @@ No license file is included. Confirm the rights for the model/data/content asset
 
 ## Local demo analytics and Gemini reports
 
-The demo analytics module stores synthetic data in SQLite at
+Set `EDUBRIDGE_DEMO_MODE=true` in `.env` to expose demo endpoints. It defaults to disabled;
+keep it disabled in production. The demo analytics module stores synthetic data in SQLite at
 `/app/data/edubridge_demo.sqlite3` (host path `./data/edubridge_demo.sqlite3`).
 The `./data` directory is git-ignored. No PostgreSQL service is required.
 
