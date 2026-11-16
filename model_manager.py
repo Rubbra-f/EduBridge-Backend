@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +65,7 @@ class ModelManager:
 
     def default_model_id(self) -> str:
         configured = os.getenv("EDUBRIDGE_DEFAULT_MODEL", "eedi_pdina").strip()
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             row = db.execute(
                 "SELECT setting_value FROM app_settings WHERE setting_key='default_model_id'"
             ).fetchone()
@@ -114,13 +115,14 @@ class ModelManager:
             )
         # Load before changing the setting so a broken checkpoint cannot become active.
         self.get_service(model_id)
-        with self._connect() as db:
+        with closing(self._connect()) as db:
             db.execute("""
                 INSERT INTO app_settings(setting_key, setting_value, updated_at)
                 VALUES ('default_model_id', ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(setting_key) DO UPDATE SET
                     setting_value=excluded.setting_value, updated_at=CURRENT_TIMESTAMP
             """, (model_id,))
+            db.commit()
         return {"default_model_id": model_id, "model": status}
 
     def reload(self, model_id: str | None = None) -> dict[str, Any]:
