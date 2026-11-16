@@ -78,6 +78,9 @@ def require_login() -> None:
             "Isi variabel tersebut di file .env lalu restart container dashboard."
         )
         st.stop()
+    if len(DASHBOARD_PASSWORD) < 16:
+        st.error("DASHBOARD_PASSWORD harus memiliki minimal 16 karakter.")
+        st.stop()
 
     if st.session_state.get("authenticated"):
         return
@@ -431,7 +434,7 @@ elif page == "Model Management":
     confirmed = st.checkbox("Saya paham bahwa reload dapat membuat request diagnosis gagal sementara.")
     if st.button("Reload model", type="primary", disabled=not confirmed):
         try:
-            result = api_request("POST", "/api/v1/admin/reload", {})
+            result = api_request("POST", "/api/v1/admin/reload")
             st.success("Model berhasil dimuat ulang.")
             st.json(result)
         except ApiError as exc:
