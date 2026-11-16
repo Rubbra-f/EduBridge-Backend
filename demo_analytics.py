@@ -61,6 +61,10 @@ def _now() -> str:
 def _question_ids(service) -> list[int]:
     form = service.forms.get("fixed")
     if form is not None and not form.empty and "QuestionId" in form.columns:
+        form = form.copy()
+        for flag in ("eligible_target_item", "reliable_params", "diagnostic"):
+            if flag in form.columns:
+                form = form[form[flag].astype(str).str.lower().isin(["true", "1"])]
         ids = pd.to_numeric(form["QuestionId"], errors="coerce").dropna().astype(int).tolist()
     else:
         ids = [int(q) for q in service.question_ids[:50]]
@@ -131,7 +135,7 @@ def build_router(get_service: Callable, require_api_key: Callable) -> APIRouter:
         return {
             "seeded": True, "is_demo": True, "classes": payload.class_count,
             "students": total_students, "questions_per_assessment": len(qids),
-            "assessment_sessions": payload.class_count * 2,
+            "assessment_sessions": total_students * 2,
             "response_rows": total_students * len(qids) * 2,
             "question_source": "P-DINA checkpoint fixed form (synthetic responses)",
             "warning": "Seluruh data ini sintetis untuk pengujian, bukan data siswa nyata."
