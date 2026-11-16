@@ -279,7 +279,7 @@ def build_router(get_service: Callable, require_api_key: Callable) -> APIRouter:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         try:
             response = requests.post(
-                url, params={"key": api_key},
+                url, headers={"x-goog-api-key": api_key},
                 json={"contents": [{"parts": [{"text": prompt}]}],
                       "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200}},
                 timeout=60,
