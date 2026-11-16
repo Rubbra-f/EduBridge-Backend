@@ -337,3 +337,8 @@ def reload_model():
     _service = None
     service = get_service()
     return {"reloaded": True, "questions": int(len(service.question_ids)), "concepts": int(len(service.concept_ids))}
+
+
+# Optional SQLite-backed demo and analytics endpoints.
+from demo_analytics import build_router
+app.include_router(build_router(get_service, require_api_key))
