@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+  "model": "gemini-2.5-flash",
+  "api_key_env": "GEMINI_API_KEY",
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "max_tokens": 700,
+  "timeout_sec": 120,
+  "connect_timeout_sec": 10,
+  "max_retries": 2,
+  "prompt_version": "narrative-gemini-v1",
+  "max_student_concepts": 12,
+  "max_class_concepts": 11,
+  "max_gaps": 5,
+  "max_recommendations": 5,
+  "max_examples": 1,
+  "examples_path": "configs/narrative_examples.jsonl",
+  "cache_dir": "artifacts/reports/cache",
+  "cache_ttl_hours": 168,
+  "log_path": "artifacts/reports/narrative_log.jsonl",
+  "allow_remote": true
+}

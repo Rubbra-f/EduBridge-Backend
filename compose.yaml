@@ -1,0 +1,28 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CDACDM_ARTIFACT_DIR: /app/artifacts
+      EEDI_CONTENT_PATH: /app/content/eedi_questions.json
+      EEDI_IMAGE_DIR: /app/content/images
+    ports:
+      # Keep the API private behind a reverse proxy (Caddy/Nginx).
+      - "127.0.0.1:${EDUBRIDGE_PORT:-8000}:8000"
+    volumes:
+      # Mount authorized assessment content and image assets here when available.
+      - ./content:/app/content:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
