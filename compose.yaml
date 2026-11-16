@@ -14,8 +14,10 @@ services:
       # Keep the API private behind a reverse proxy (Caddy/Nginx).
       - "127.0.0.1:${EDUBRIDGE_PORT:-8000}:8000"
     volumes:
-      # Mount authorized assessment content and image assets here when available.
+      # Mount authorized assessment content and local image assets read-only.
       - ./content:/app/content:ro
+      # Persist local SQLite demo data outside the container.
+      - ./data:/app/data
     healthcheck:
       test:
         - CMD

@@ -100,3 +100,35 @@ See `.env.example`. The model artifact directory defaults to `/app/artifacts`.
 Backend code and artifacts were extracted from the `backend/` directory of the EduBridge project. Frontend code and frontend-specific build configuration are not included.
 
 No license file is included. Confirm the rights for the model/data/content assets before redistribution or commercial use.
+
+
+## Local demo analytics and Gemini reports
+
+Set `EDUBRIDGE_DEMO_MODE=true` in `.env` to expose demo endpoints. It defaults to disabled;
+keep it disabled in production. The demo analytics module stores synthetic data in SQLite at
+`/app/data/edubridge_demo.sqlite3` (host path `./data/edubridge_demo.sqlite3`).
+The `./data` directory is git-ignored. No PostgreSQL service is required.
+
+After starting Compose, use the Streamlit dashboard:
+- **Demo Data**: seed synthetic classes, students, pre/post sessions and response rows.
+- **Analytics**: inspect aggregate accuracy, P-DINA class diagnosis, learning gaps, recommendations and pre/post comparisons.
+- **Gemini Reports**: generate an Indonesian teacher report from backend-computed facts.
+
+Set `GEMINI_API_KEY` in `.env` to enable Gemini reports. `GEMINI_MODEL` defaults to
+`gemini-2.5-flash`. Gemini receives compact aggregated diagnostic facts, not raw
+answer-level records or student names. Reports are marked as demo data.
+
+Demo endpoints:
+- `POST /api/v1/admin/demo/seed`
+- `DELETE /api/v1/admin/demo/reset`
+- `GET /api/v1/analytics/overview`
+- `GET /api/v1/analytics/class/{class_id}?period=post`
+- `GET /api/v1/analytics/student/{student_id}?period=post`
+- `GET /api/v1/analytics/prepost/{class_id}`
+- `POST /api/v1/analytics/generate-report`
+
+All endpoints require `X-API-Key`. Synthetic responses use question IDs from the
+P-DINA fixed assessment form. This is separate from local EduBridge image assets:
+matching numeric image filenames do not prove item equivalence, answer-key validity,
+or concept mapping. Demo data is for software testing only, not evidence of
+intervention effectiveness.
