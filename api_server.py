@@ -137,7 +137,7 @@ def supported_fixed_form(service: CDMService) -> pd.DataFrame:
     """Return only the packaged, model-supported EEDI fixed-form items."""
     form = service.forms.get("fixed")
     if form is None or form.empty:
-        raise HTTPException(status_code=503, detail="The model-supported EEDI fixed assessment is not packaged")
+        raise HTTPException(status_code=503, detail="The selected model fixed assessment is not packaged")
     if "QuestionId" not in form.columns:
         raise HTTPException(status_code=503, detail="The fixed assessment is missing QuestionId")
     form = form.copy()
@@ -145,7 +145,7 @@ def supported_fixed_form(service: CDMService) -> pd.DataFrame:
     model_ids = set(int(q) for q in service.question_ids)
     unknown = sorted(set(form["QuestionId"]) - model_ids)
     if unknown:
-        raise HTTPException(status_code=503, detail=f"Fixed assessment contains IDs absent from the P-DINA checkpoint: {unknown}")
+        raise HTTPException(status_code=503, detail=f"Fixed assessment contains IDs absent from the selected P-DINA checkpoint: {unknown}")
     for flag in ("eligible_target_item", "reliable_params", "diagnostic"):
         if flag in form.columns:
             form = form[form[flag].astype(str).str.lower().isin(["true", "1"])]
@@ -198,7 +198,7 @@ def validate_assessment_responses(payload: DiagnoseRequest, service: CDMService)
     if unsupported:
         raise HTTPException(
             status_code=422,
-            detail={"message": "Only EEDI questions in the packaged P-DINA-supported fixed assessment are accepted.",
+            detail={"message": "Only questions in the selected model-supported assessment bank are accepted.",
                     "unsupported_question_ids": unsupported,
                     "supported_question_count": len(allowed)},
         )
@@ -315,7 +315,7 @@ def submit_assessment(payload: AssessmentSubmitRequest):
             scored = None
         else:
             if item.question_id not in answer_key.index:
-                raise HTTPException(status_code=422, detail=f"No verified EEDI answer key for QuestionId {item.question_id}")
+                raise HTTPException(status_code=422, detail=f"No verified answer key for QuestionId {item.question_id} in the selected model")
             correct = int(answer_key.loc[item.question_id])
             if correct not in (1, 2, 3, 4):
                 raise HTTPException(status_code=503, detail=f"Invalid server-side answer key for QuestionId {item.question_id}")
@@ -326,7 +326,7 @@ def submit_assessment(payload: AssessmentSubmitRequest):
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
-        "assessment_id": "eedi_pdina_fixed_v1",
+        "assessment_id": f"{getattr(service, 'model_id', 'eedi_pdina')}_fixed_v1",
         "scoring": "server_side_answer_key",
         "answered": sum(r["response"] is not None for r in rows),
         "submitted": len(rows),
