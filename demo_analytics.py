@@ -91,8 +91,13 @@ def _session_frame(db: sqlite3.Connection, class_id: str, period: str) -> pd.Dat
     return pd.DataFrame([dict(r) for r in rows])
 
 
+def require_demo_mode() -> None:
+    if os.getenv("EDUBRIDGE_DEMO_MODE", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+        raise HTTPException(status_code=404, detail="Demo analytics is disabled")
+
+
 def build_router(get_service: Callable, require_api_key: Callable) -> APIRouter:
-    router = APIRouter(prefix="/api/v1", tags=["demo-analytics"])
+    router = APIRouter(prefix="/api/v1", tags=["demo-analytics"], dependencies=[Depends(require_demo_mode)])
 
     @router.post("/admin/demo/seed", dependencies=[Depends(require_api_key)])
     def seed_demo(payload: SeedRequest, service=Depends(get_service)):
