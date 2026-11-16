@@ -139,8 +139,10 @@ class CDMService:
             return [] if df is None or len(df) == 0 else json.loads(df.to_json(orient="records"))
         prof = result["profiles"]
         return {
-            "generated_by": "cdacdm P-DINA (variational EM)", "model": self.model_card.get("model_selection", {}).get("main_model"),
-            "artifact_source": self.model_card.get("data", {}).get("artifact_source"),
+            "generated_by": "cdacdm P-DINA (variational EM)",
+            "model_id": getattr(self, "model_id", None),
+            "model": (self.model_card.get("model_selection") or {}).get("main_model") or "P-DINA",
+            "artifact_source": (self.model_card.get("data") or {}).get("artifact_source") or str(self.artifact_dir),
             "policy": result["policy"], "input_info": result["info"],
             "mastery_profiles_target": recs(prof[prof["is_target_concept"]]),
             "learning_gaps": recs(result["gaps"]), "intervention_recommendations": recs(result["recommendations"]),

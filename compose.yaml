@@ -10,12 +10,17 @@ services:
       CDACDM_ARTIFACT_DIR: /app/artifacts
       EEDI_CONTENT_PATH: /app/content/eedi_questions.json
       EEDI_IMAGE_DIR: /app/content/images
+      CALCULUS_ARTIFACT_DIR: /app/artifacts_calculus
+      CALCULUS_IMAGE_DIR: /app/content/calculus_images
+      EDUBRIDGE_DEFAULT_MODEL: ${EDUBRIDGE_DEFAULT_MODEL:-eedi_pdina}
     ports:
       # Keep the API private behind a reverse proxy (Caddy/Nginx).
       - "127.0.0.1:${EDUBRIDGE_PORT:-8000}:8000"
     volumes:
       # Mount authorized assessment content and local image assets read-only.
       - ./content:/app/content:ro
+      # Optional second checkpoint; provide artifacts_calculus/model/* locally.
+      - ./artifacts_calculus:/app/artifacts_calculus:ro
       # Persist local SQLite demo data outside the container.
       - ./data:/app/data
     healthcheck:
