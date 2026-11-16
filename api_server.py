@@ -120,11 +120,13 @@ def set_default_model(payload: DefaultModelRequest):
 @app.get("/api/v1/model", dependencies=[Depends(require_api_key)])
 def model_info(service: CDMService = Depends(get_service)):
     card = service.model_card
+    selection = card.get("model_selection") or {}
+    data = card.get("data") or {}
     return {
         "model_id": getattr(service, "model_id", model_manager.default_model_id()),
         "engine": "P-DINA",
-        "model": card.get("model_selection", {}).get("main_model") or "P-DINA",
-        "artifact_source": card.get("data", {}).get("artifact_source") or str(service.artifact_dir),
+        "model": selection.get("main_model") or "P-DINA",
+        "artifact_source": data.get("artifact_source") or str(service.artifact_dir),
         "questions": int(len(service.question_ids)),
         "concepts": int(len(service.concept_ids)),
         "target_concepts": int(len(service.policy.target_concept_ids)),
