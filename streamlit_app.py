@@ -242,6 +242,9 @@ page = st.sidebar.radio(
         "Assessment Submit",
         "Direct Diagnosis",
         "Narrative",
+        "Demo Data",
+        "Analytics",
+        "Gemini Reports",
         "Model Management",
     ],
 )
@@ -425,6 +428,109 @@ elif page == "Narrative":
                     st.json(result.get("validation", {}))
                 except ApiError as exc:
                     show_api_error(exc)
+    except ApiError as exc:
+        show_api_error(exc)
+
+
+elif page == "Demo Data":
+    st.header("Demo dataset")
+    st.warning("Data yang dibuat di halaman ini sepenuhnya sintetis dan ditandai is_demo=true. Data ini hanya untuk pengujian.")
+    c1, c2, c3 = st.columns(3)
+    students_per_class = c1.slider("Siswa per kelas", 3, 30, 10)
+    class_count = c2.slider("Jumlah kelas", 1, 6, 3)
+    seed = c3.number_input("Random seed", min_value=0, max_value=2_000_000_000, value=42)
+    st.caption("Generator menggunakan question ID dari fixed form checkpoint P-DINA. Foto lokal EduBridge tidak otomatis dianggap kompatibel dengan checkpoint.")
+    if st.button("Generate / reset demo dataset", type="primary"):
+        try:
+            result = api_request("POST", "/api/v1/admin/demo/seed", {
+                "students_per_class": students_per_class,
+                "class_count": class_count,
+                "seed": int(seed),
+            }, timeout=90)
+            st.success("Dataset demo berhasil dibuat.")
+            st.json(result)
+        except ApiError as exc:
+            show_api_error(exc)
+    if st.button("Hapus seluruh data demo", type="secondary"):
+        try:
+            result = api_request("DELETE", "/api/v1/admin/demo/reset")
+            st.success("Data demo berhasil dihapus.")
+            st.json(result)
+        except ApiError as exc:
+            show_api_error(exc)
+    try:
+        st.subheader("Status dataset")
+        st.json(api_request("GET", "/api/v1/analytics/overview"))
+    except ApiError as exc:
+        show_api_error(exc)
+
+elif page == "Analytics":
+    st.header("Learning analytics")
+    st.caption("Statistik dihitung backend dari respons demo; diagnosis konsep dihitung oleh P-DINA.")
+    try:
+        overview = api_request("GET", "/api/v1/analytics/overview")
+        cols = st.columns(4)
+        cols[0].metric("Kelas", overview.get("classes", 0))
+        cols[1].metric("Siswa", overview.get("students", 0))
+        cols[2].metric("Sesi", overview.get("assessment_sessions", 0))
+        accuracy = overview.get("overall_accuracy")
+        cols[3].metric("Akurasi", f"{accuracy:.1%}" if isinstance(accuracy, (int, float)) else "-")
+        if not overview.get("students"):
+            st.info("Belum ada data. Buka menu Demo Data untuk membuat dataset.")
+        else:
+            count = int(overview.get("classes", 0))
+            class_options = [f"DEMO-C{i:02d}" for i in range(1, count + 1)]
+            selected_class = st.selectbox("Pilih kelas", class_options)
+            period = st.radio("Periode analisis", ["post", "pre"], horizontal=True)
+            if st.button("Jalankan analisis kelas", type="primary"):
+                try:
+                    result = api_request("GET", f"/api/v1/analytics/class/{selected_class}?period={period}", timeout=90)
+                    st.subheader(f"{result['class']['class_name']} — {period}-test")
+                    st.metric("Akurasi respons", f"{result['accuracy']:.1%}")
+                    st.json(result["diagnosis"].get("class_summary", []))
+                    st.subheader("Learning gaps")
+                    st.dataframe(pd.DataFrame(result["diagnosis"].get("learning_gaps", [])), use_container_width=True, hide_index=True)
+                    st.subheader("Rekomendasi intervensi")
+                    st.dataframe(pd.DataFrame(result["diagnosis"].get("intervention_recommendations", [])), use_container_width=True, hide_index=True)
+                    st.caption(result["disclaimer"])
+                except ApiError as exc:
+                    show_api_error(exc)
+            if st.button("Bandingkan pre-test dan post-test"):
+                try:
+                    result = api_request("GET", f"/api/v1/analytics/prepost/{selected_class}")
+                    st.metric("Perubahan rata-rata", f"{result['mean_change']:+.1%}")
+                    st.bar_chart(pd.DataFrame({"Akurasi": [result["pre_accuracy"], result["post_accuracy"]]}, index=["Pre-test", "Post-test"]))
+                    st.write({"Siswa meningkat": result["students_improved"], "Tidak berubah": result["students_unchanged"], "Menurun": result["students_declined"]})
+                    st.dataframe(pd.DataFrame(result["student_results"]), use_container_width=True, hide_index=True)
+                    st.warning(result["warning"])
+                except ApiError as exc:
+                    show_api_error(exc)
+    except ApiError as exc:
+        show_api_error(exc)
+
+elif page == "Gemini Reports":
+    st.header("Generate laporan dengan Gemini")
+    st.caption("Gemini menyusun narasi dari fakta analisis backend. Statistik dan diagnosis tidak dibuat oleh Gemini.")
+    try:
+        overview = api_request("GET", "/api/v1/analytics/overview")
+        if not overview.get("students"):
+            st.info("Buat dataset demo terlebih dahulu melalui menu Demo Data.")
+        else:
+            class_options = [f"DEMO-C{i:02d}" for i in range(1, int(overview.get("classes", 0)) + 1)]
+            selected_class = st.selectbox("Kelas untuk laporan", class_options, key="gemini_class")
+            period = st.radio("Periode laporan", ["post", "pre"], horizontal=True, key="gemini_period")
+            if st.button("Generate laporan Gemini", type="primary"):
+                with st.spinner("Menghitung diagnosis P-DINA dan meminta Gemini menyusun laporan..."):
+                    try:
+                        result = api_request("POST", "/api/v1/analytics/generate-report", {"class_id": selected_class, "period": period}, timeout=90)
+                        st.success(f"Laporan dibuat menggunakan {result.get('provider')} ({result.get('model')}).")
+                        st.markdown(result.get("text", ""))
+                        st.caption(result.get("disclaimer", ""))
+                        st.download_button("Download laporan Markdown", data=result.get("text", ""), file_name=f"edubridge-{selected_class}-{period}-report.md", mime="text/markdown")
+                        with st.expander("Fakta numerik sumber laporan"):
+                            st.json(result.get("facts", {}))
+                    except ApiError as exc:
+                        show_api_error(exc)
     except ApiError as exc:
         show_api_error(exc)
 
