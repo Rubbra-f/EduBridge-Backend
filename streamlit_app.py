@@ -536,15 +536,56 @@ elif page == "Gemini Reports":
 
 elif page == "Model Management":
     st.header("Model management")
-    st.warning("Reload akan membuang service cache di API dan memuat ulang checkpoint model.")
-    confirmed = st.checkbox("Saya paham bahwa reload dapat membuat request diagnosis gagal sementara.")
-    if st.button("Reload model", type="primary", disabled=not confirmed):
-        try:
-            result = api_request("POST", "/api/v1/admin/reload")
-            st.success("Model berhasil dimuat ulang.")
+    st.caption("Pilih model default untuk request API yang tidak mengirim model_id. Pilihan disimpan di SQLite dan bertahan setelah restart.")
+    try:
+        registry = api_request("GET", "/api/v1/models")
+        models = registry.get("models", [])
+        current = registry.get("default_model_id", "eedi_pdina")
+        if not models:
+            st.warning("Registry model kosong.")
+        else:
+            st.subheader("Checkpoint yang terdaftar")
+            st.dataframe(pd.DataFrame([
+                {"Model ID": m.get("model_id"), "Nama": m.get("name"),
+                 "Status": "Ready" if m.get("ready") else "Belum tersedia",
+                 "Demo saja": bool(m.get("demo_only")),
+                 "Direktori": m.get("artifact_dir"),
+                 "File hilang": ", ".join(m.get("missing", []))}
+                for m in models
+            ]), use_container_width=True, hide_index=True)
+            ready_models = [m for m in models if m.get("ready")]
+            if ready_models:
+                ids = [m["model_id"] for m in ready_models]
+                index = ids.index(current) if current in ids else 0
+                selected = st.selectbox(
+                    "Model default",
+                    ids,
+                    index=index,
+                    format_func=lambda mid: next(
+                        (f"{m.get('name', mid)} ({mid})" for m in ready_models if m["model_id"] == mid), mid
+                    ),
+                )
+                if st.button("Simpan model default", type="primary", disabled=(selected == current)):
+                    result = api_request("PUT", "/api/v1/admin/models/default", {"model_id": selected})
+                    st.success(f"Model default diubah menjadi {selected}.")
+                    st.json(result)
+                    st.rerun()
+            else:
+                st.warning("Belum ada checkpoint model yang siap digunakan.")
+        st.divider()
+        st.subheader("Reload checkpoint")
+        st.caption("Reload menghapus cache service model yang dipilih, lalu memuat ulang file checkpoint dari disk.")
+        reload_options = [m["model_id"] for m in models]
+        reload_target = st.selectbox("Model yang akan di-reload", ["Semua model", *reload_options])
+        confirmed = st.checkbox("Saya paham reload model dapat membuat request terkait gagal sementara.")
+        if st.button("Reload model", type="secondary", disabled=not confirmed):
+            target = None if reload_target == "Semua model" else reload_target
+            suffix = "" if target is None else f"?model_id={target}"
+            result = api_request("POST", f"/api/v1/admin/reload{suffix}", timeout=90)
+            st.success("Proses reload selesai. Periksa status tiap model di bawah.")
             st.json(result)
-        except ApiError as exc:
-            show_api_error(exc)
+    except ApiError as exc:
+        show_api_error(exc)
 
 st.divider()
 st.caption("EduBridge Backend Console · Internal testing tool · Jangan publikasikan dashboard tanpa proteksi akses.")
