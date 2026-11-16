@@ -35,7 +35,7 @@ class ModelManager:
             "eedi_pdina": {
                 "name": "EEDI P-DINA",
                 "description": "Matematika EEDI NeurIPS 2020 Task 3/4",
-                "artifact_dir": os.getenv("EEDI_ARTIFACT_DIR", "/app/artifacts"),
+                "artifact_dir": os.getenv("EEDI_ARTIFACT_DIR", os.getenv("CDACDM_ARTIFACT_DIR", "/app/artifacts")),
                 "demo_only": False,
             },
             "calculus_pdina": {
