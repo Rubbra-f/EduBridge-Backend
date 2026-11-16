@@ -24,7 +24,7 @@ if origins:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
 
@@ -154,14 +154,16 @@ def supported_fixed_form(service: CDMService) -> pd.DataFrame:
 
 def supported_question_bank(service: CDMService) -> pd.DataFrame:
     """Load the 139 eligible EEDI questions supported by the P-DINA checkpoint."""
-    artifact_dir = Path(os.getenv("CDACDM_ARTIFACT_DIR", "/app/artifacts"))
+    artifact_dir = Path(service.artifact_dir)
     path = artifact_dir / "assessment" / "question_bank.csv"
 
-    if not path.is_file():
-        raise HTTPException(status_code=503, detail="Question bank is not packaged")
-
     try:
-        bank = pd.read_csv(path)
+        if path.is_file():
+            bank = pd.read_csv(path)
+        elif service.item_bank is not None:
+            bank = service.item_bank.copy()
+        else:
+            bank = service.items.copy()
         bank["QuestionId"] = pd.to_numeric(bank["QuestionId"], errors="raise").astype(int)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Cannot read question bank: {exc}") from exc
@@ -179,6 +181,9 @@ def supported_question_bank(service: CDMService) -> pd.DataFrame:
             detail=f"Question bank contains IDs absent from P-DINA checkpoint: {unknown}",
         )
 
+    for column in ("concept_ids", "concept_names", "n_concepts", "model_difficulty"):
+        if column not in bank.columns:
+            bank[column] = None
     return bank.sort_values(["concept_names", "QuestionId"]).reset_index(drop=True)
 
 
@@ -215,10 +220,9 @@ def assessment_image(
             detail="Question image not found",
         )
 
-    image_path = (
-        Path(os.getenv("EEDI_IMAGE_DIR", "/app/content/images"))
-        / f"{question_id}.jpg"
-    )
+    image_env = "CALCULUS_IMAGE_DIR" if getattr(service, "model_id", "") == "calculus_pdina" else "EEDI_IMAGE_DIR"
+    image_default = "/app/content/calculus_images" if image_env == "CALCULUS_IMAGE_DIR" else "/app/content/images"
+    image_path = Path(os.getenv(image_env, image_default)) / f"{question_id}.jpg"
 
     if not image_path.is_file():
         raise HTTPException(
@@ -246,9 +250,10 @@ def assessment_bank(service: CDMService = Depends(get_service)):
         item["image_url"] = f"/api/v1/assessment/images/{qid}"
 
     return {
-        "assessment_id": "eedi_pdina_question_bank_v1",
-        "source": "EEDI NeurIPS 2020",
+        "assessment_id": f"{getattr(service, 'model_id', 'eedi_pdina')}_question_bank_v1",
+        "source": "EEDI NeurIPS 2020" if getattr(service, "model_id", "eedi_pdina") == "eedi_pdina" else "Model artifact",
         "model": "P-DINA",
+        "model_id": getattr(service, "model_id", "eedi_pdina"),
         "items": items,
         "count": len(items),
         "note": "Question metadata only. Answer keys are never returned.",
@@ -262,7 +267,7 @@ def fixed_assessment(service: CDMService = Depends(get_service)):
                                 "n_concepts", "model_difficulty"] if c in form.columns]
     allowed = set(form["QuestionId"].astype(int))
     try:
-        content = load_assessment_content(allowed)
+        content = load_assessment_content(allowed) if getattr(service, "model_id", "eedi_pdina") == "eedi_pdina" else {}
     except AssessmentContentError as exc:
         raise HTTPException(status_code=503, detail=f"EEDI content pack invalid: {exc}") from exc
     items = records(form[safe_columns])
@@ -272,9 +277,10 @@ def fixed_assessment(service: CDMService = Depends(get_service)):
             item.update(content[qid])
     ready = bool(content) and len(content) == len(items)
     return {
-        "assessment_id": "eedi_pdina_fixed_v1",
-        "source": "EEDI NeurIPS 2020",
+        "assessment_id": f"{getattr(service, 'model_id', 'eedi_pdina')}_fixed_v1",
+        "source": "EEDI NeurIPS 2020" if getattr(service, "model_id", "eedi_pdina") == "eedi_pdina" else "Model artifact",
         "model": "P-DINA",
+        "model_id": getattr(service, "model_id", "eedi_pdina"),
         "items": items,
         "count": int(len(items)),
         "question_content_available": ready,
