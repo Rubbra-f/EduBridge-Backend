@@ -36,7 +36,7 @@ curl http://127.0.0.1:8000/health
 Authenticated API example:
 
 ```bash
-curl -H "X-API-Key: $EDUBRIDGE_API_KEY" \
+curl -H "X-API-Key: YOUR_EDUBRIDGE_API_KEY" \
   http://127.0.0.1:8000/api/v1/model
 ```
 
