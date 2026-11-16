@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from cdacdm.service import CDMService, CheckpointNotFoundError, checkpoint_status
+from model_manager import model_manager
 from assessment_content import AssessmentContentError, load_assessment_content
 
 APP_VERSION = "0.1.0"
@@ -27,18 +28,13 @@ if origins:
         allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
 
-_service: CDMService | None = None
-
-
-def get_service() -> CDMService:
-    global _service
-    if _service is None:
-        artifact_dir = os.getenv("CDACDM_ARTIFACT_DIR", "/app/artifacts")
-        try:
-            _service = CDMService.load(artifact_dir)
-        except (CheckpointNotFoundError, FileNotFoundError) as exc:
-            raise HTTPException(status_code=503, detail=f"Model checkpoint is not ready: {exc}") from exc
-    return _service
+def get_service(model_id: str | None = None) -> CDMService:
+    try:
+        return model_manager.get_service(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (CheckpointNotFoundError, FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=f"Model checkpoint is not ready: {exc}") from exc
 
 
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
@@ -57,6 +53,7 @@ class ResponseRow(BaseModel):
 
 
 class DiagnoseRequest(BaseModel):
+    model_id: str | None = Field(default=None, min_length=1, max_length=64)
     student_id: str = Field(min_length=1, max_length=128)
     responses: list[ResponseRow] = Field(min_length=1, max_length=500)
 
@@ -74,6 +71,7 @@ class AnswerChoiceRow(BaseModel):
 
 
 class AssessmentSubmitRequest(BaseModel):
+    model_id: str | None = Field(default=None, min_length=1, max_length=64)
     student_id: str = Field(min_length=1, max_length=128)
     responses: list[AnswerChoiceRow] = Field(min_length=1, max_length=500)
 
@@ -88,18 +86,45 @@ def records(frame: pd.DataFrame) -> list[dict[str, Any]]:
 
 @app.get("/health")
 def health():
-    status = checkpoint_status(os.getenv("CDACDM_ARTIFACT_DIR", "/app/artifacts"))
-    return {"status": "ok" if status["ready"] else "degraded", "version": APP_VERSION,
-            "model_ready": status["ready"], "missing_checkpoint_files": status["missing"]}
+    active = model_manager.active_info()
+    status = active.get("model") or {}
+    return {"status": "ok" if status.get("ready") else "degraded", "version": APP_VERSION,
+            "model_ready": bool(status.get("ready")), "active_model_id": active.get("default_model_id"),
+            "missing_checkpoint_files": status.get("missing", [])}
+
+
+@app.get("/api/v1/models", dependencies=[Depends(require_api_key)])
+def list_models():
+    return {"default_model_id": model_manager.default_model_id(), "models": model_manager.list_models()}
+
+
+@app.get("/api/v1/models/active", dependencies=[Depends(require_api_key)])
+def active_model():
+    return model_manager.active_info()
+
+
+class DefaultModelRequest(BaseModel):
+    model_id: str = Field(min_length=1, max_length=64)
+
+
+@app.put("/api/v1/admin/models/default", dependencies=[Depends(require_api_key)])
+def set_default_model(payload: DefaultModelRequest):
+    try:
+        return model_manager.set_default(payload.model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (CheckpointNotFoundError, FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/model", dependencies=[Depends(require_api_key)])
 def model_info(service: CDMService = Depends(get_service)):
     card = service.model_card
     return {
+        "model_id": getattr(service, "model_id", model_manager.default_model_id()),
         "engine": "P-DINA",
-        "model": card.get("model_selection", {}).get("main_model"),
-        "artifact_source": card.get("data", {}).get("artifact_source"),
+        "model": card.get("model_selection", {}).get("main_model") or "P-DINA",
+        "artifact_source": card.get("data", {}).get("artifact_source") or str(service.artifact_dir),
         "questions": int(len(service.question_ids)),
         "concepts": int(len(service.concept_ids)),
         "target_concepts": int(len(service.policy.target_concept_ids)),
@@ -258,7 +283,8 @@ def fixed_assessment(service: CDMService = Depends(get_service)):
     }
 
 @app.post("/api/v1/assessment/submit", dependencies=[Depends(require_api_key)])
-def submit_assessment(payload: AssessmentSubmitRequest, service: CDMService = Depends(get_service)):
+def submit_assessment(payload: AssessmentSubmitRequest):
+    service = get_service(payload.model_id)
     """Score A-D choices server-side, then run P-DINA. Trusted server-to-server only."""
     validation_payload = DiagnoseRequest(
         student_id=payload.student_id,
@@ -303,7 +329,8 @@ def submit_assessment(payload: AssessmentSubmitRequest, service: CDMService = De
 
 
 @app.post("/api/v1/diagnose", dependencies=[Depends(require_api_key)])
-def diagnose(payload: DiagnoseRequest, service: CDMService = Depends(get_service)):
+def diagnose(payload: DiagnoseRequest):
+    service = get_service(payload.model_id)
     validate_assessment_responses(payload, service)
     rows = [{"student_id": payload.student_id, "QuestionId": r.question_id, "response": r.response}
             for r in payload.responses]
@@ -316,7 +343,8 @@ def diagnose(payload: DiagnoseRequest, service: CDMService = Depends(get_service
 
 
 @app.post("/api/v1/narrative", dependencies=[Depends(require_api_key)])
-def narrative(payload: NarrativeRequest, service: CDMService = Depends(get_service)):
+def narrative(payload: NarrativeRequest):
+    service = get_service(payload.model_id)
     """Run P-DINA, then explain only compact pseudonymized facts with Gemini."""
     validate_assessment_responses(payload, service)
     rows = [{"student_id": payload.student_id, "QuestionId": r.question_id, "response": r.response}
@@ -332,11 +360,8 @@ def narrative(payload: NarrativeRequest, service: CDMService = Depends(get_servi
 
 
 @app.post("/api/v1/admin/reload", dependencies=[Depends(require_api_key)])
-def reload_model():
-    global _service
-    _service = None
-    service = get_service()
-    return {"reloaded": True, "questions": int(len(service.question_ids)), "concepts": int(len(service.concept_ids))}
+def reload_model(model_id: str | None = None):
+    return model_manager.reload(model_id)
 
 
 # Optional SQLite-backed demo and analytics endpoints.
